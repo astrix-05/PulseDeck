@@ -128,4 +128,3 @@ PulseDeck Presenter is in active development. Join our waitlist to:
 - **Portfolio:** [astrix-05.github.io/Portfolio](https://astrix-05.github.io/Portfolio/)
 - **Email:** ankitsingh620162@gmail.com
 
-**Adobe Fund for Design Submission: 2026**
