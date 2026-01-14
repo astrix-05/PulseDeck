@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import { ArrowRight, Github } from 'lucide-react';
 import CountdownTimer from './CountdownTimer';
+import { useEffect, useState } from 'react';
 
 export default function Hero() {
   return (
@@ -24,7 +27,7 @@ export default function Hero() {
         
         <div className="flex flex-col sm:flex-row justify-center gap-4">
           <Link
-            href="https://github.com/astrix-05/pulsedeck-landing"
+            href="https://github.com/astrix-05/PulseDeck"
             target="_blank"
             className="inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 md:py-4 md:text-lg transition-all shadow-[0_0_20px_rgba(79,70,229,0.5)] hover:shadow-[0_0_30px_rgba(79,70,229,0.7)]"
           >
