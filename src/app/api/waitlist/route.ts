@@ -1,40 +1,21 @@
 
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import fs from 'fs';
-import path from 'path';
+import { kv } from '@vercel/kv';
 
-// Define the path to the JSON file
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DATA_DIR, 'waitlist.json');
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-// Helper to read the DB
-function readDb() {
-  if (!fs.existsSync(DB_PATH)) {
-    return [];
-  }
-  const data = fs.readFileSync(DB_PATH, 'utf-8');
-  try {
-    return JSON.parse(data);
-  } catch (error) {
-    return [];
-  }
-}
-
-// Helper to write to the DB
-function writeDb(data: any[]) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-}
+// Define the key for the waitlist set
+const WAITLIST_KEY = 'waitlist_emails';
 
 // GET handler to return the count
 export async function GET() {
-  const emails = readDb();
-  return NextResponse.json({ count: emails.length });
+  try {
+    const count = await kv.scard(WAITLIST_KEY);
+    return NextResponse.json({ count });
+  } catch (error) {
+    console.error('Failed to get waitlist count:', error);
+    // Fallback to 0 if KV fails (e.g. locally without env vars)
+    return NextResponse.json({ count: 0 });
+  }
 }
 
 // POST handler to add email
@@ -46,29 +27,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Invalid email address' }, { status: 400 });
     }
 
-    const emails = readDb();
+    // Check if email already exists
+    const isMember = await kv.sismember(WAITLIST_KEY, email);
     
-    // Check for duplicates
-    let rank = emails.findIndex((e: any) => e.email === email);
-    if (rank !== -1) {
+    // Get total count (for rank)
+    let count = await kv.scard(WAITLIST_KEY);
+
+    if (isMember) {
+      // If already exists, we can't easily determine exact "rank" in a Set without sorting
+      // For MVP, we'll just return the current total count as their rank estimate
       return NextResponse.json({ 
         success: true,
         message: 'You are already on the list!', 
-        rank: rank + 1, 
-        count: emails.length 
+        rank: count, 
+        count: count 
       });
     }
 
-    // Add new email
-    const newEntry = {
-      email,
-      date: new Date().toISOString(),
-    };
+    // Add new email to KV Set
+    await kv.sadd(WAITLIST_KEY, email);
     
-    emails.push(newEntry);
-    writeDb(emails);
-
-    rank = emails.length;
+    // Increment count locally for the response
+    count++;
+    const rank = count;
 
     // Send emails using Nodemailer
     if (process.env.GMAIL_EMAIL && process.env.GMAIL_PASSWORD) {
@@ -105,7 +86,7 @@ export async function POST(request: Request) {
           from: process.env.GMAIL_EMAIL,
           to: process.env.GMAIL_EMAIL, // Send to self
           subject: `New Waitlist Signup: ${email}`,
-          text: `New user joined the waitlist:\n\nEmail: ${email}\nRank: #${rank}\nTotal Count: ${emails.length}`,
+          text: `New user joined the waitlist:\n\nEmail: ${email}\nRank: #${rank}\nTotal Count: ${count}`,
         });
 
         console.log(`Emails sent for ${email}`);
