@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Send } from 'lucide-react';
 
 export default function Waitlist() {
@@ -10,14 +10,14 @@ export default function Waitlist() {
   const [count, setCount] = useState<number | null>(null);
 
   // Fetch count on mount
-  useState(() => {
+  useEffect(() => {
     fetch('/api/waitlist')
       .then(res => res.json())
       .then(data => {
         if (data.count) setCount(data.count);
       })
       .catch(err => console.error('Failed to fetch count', err));
-  });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
