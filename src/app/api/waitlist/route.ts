@@ -6,36 +6,62 @@ import { kv } from '@vercel/kv';
 // Define the key for the waitlist set
 const WAITLIST_KEY = 'waitlist_emails';
 
+// Helper for checking KV connection
+const isKvConfigured = () => {
+  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+};
+
 // GET handler to return the count
 export async function GET() {
+  console.log('[API] GET /api/waitlist - Fetching count');
+  
+  if (!isKvConfigured()) {
+    console.warn('[API] KV not configured. Returning 0 count.');
+    return NextResponse.json({ count: 0 });
+  }
+
   try {
     const count = await kv.scard(WAITLIST_KEY);
+    console.log('[API] Count fetched successfully:', count);
     return NextResponse.json({ count });
   } catch (error) {
-    console.error('Failed to get waitlist count:', error);
-    // Fallback to 0 if KV fails (e.g. locally without env vars)
+    console.error('[API] Failed to get waitlist count:', error);
+    // Fallback to 0 if KV fails
     return NextResponse.json({ count: 0 });
   }
 }
 
 // POST handler to add email
 export async function POST(request: Request) {
+  console.log('[API] POST /api/waitlist - New submission');
+  
   try {
     const { email } = await request.json();
+    console.log('[API] Received email:', email);
 
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      console.warn('[API] Invalid email format');
       return NextResponse.json({ success: false, error: 'Invalid email address' }, { status: 400 });
     }
 
+    // Check if KV is configured
+    if (!isKvConfigured()) {
+      console.error('[API] KV environment variables missing');
+      // For local dev without KV, we can mock success or return error
+      // Let's return error to prompt configuration, or mock if you prefer
+      // For now, let's log error and return 500
+      return NextResponse.json({ success: false, error: 'Database configuration missing' }, { status: 500 });
+    }
+
     // Check if email already exists
+    console.log('[API] Checking for duplicates in KV...');
     const isMember = await kv.sismember(WAITLIST_KEY, email);
     
     // Get total count (for rank)
     let count = await kv.scard(WAITLIST_KEY);
 
     if (isMember) {
-      // If already exists, we can't easily determine exact "rank" in a Set without sorting
-      // For MVP, we'll just return the current total count as their rank estimate
+      console.log('[API] Email already exists. Returning current rank.');
       return NextResponse.json({ 
         success: true,
         message: 'You are already on the list!', 
@@ -45,14 +71,17 @@ export async function POST(request: Request) {
     }
 
     // Add new email to KV Set
+    console.log('[API] Adding new email to KV...');
     await kv.sadd(WAITLIST_KEY, email);
     
     // Increment count locally for the response
     count++;
     const rank = count;
+    console.log('[API] Email added. New count:', count);
 
     // Send emails using Nodemailer
     if (process.env.GMAIL_EMAIL && process.env.GMAIL_PASSWORD) {
+      console.log('[API] Attempting to send emails...');
       try {
         const transporter = nodemailer.createTransport({
           service: 'gmail',
@@ -89,13 +118,13 @@ export async function POST(request: Request) {
           text: `New user joined the waitlist:\n\nEmail: ${email}\nRank: #${rank}\nTotal Count: ${count}`,
         });
 
-        console.log(`Emails sent for ${email}`);
+        console.log(`[API] Emails sent successfully for ${email}`);
       } catch (emailError) {
-        console.error('Failed to send email:', emailError);
+        console.error('[API] Failed to send email:', emailError);
         // Don't fail the request if email sending fails
       }
     } else {
-      console.warn('GMAIL_EMAIL or GMAIL_PASSWORD not set. Skipping email send.');
+      console.warn('[API] GMAIL_EMAIL or GMAIL_PASSWORD not set. Skipping email send.');
     }
 
     return NextResponse.json({ 
@@ -106,7 +135,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    console.error('Error in waitlist API:', error);
+    console.error('[API] Critical Error in waitlist API:', error);
     return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
   }
 }
