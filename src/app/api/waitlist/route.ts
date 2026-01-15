@@ -1,6 +1,5 @@
 
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 import { kv } from '@vercel/kv';
 
 // Define the key for the waitlist set
@@ -8,7 +7,13 @@ const WAITLIST_KEY = 'waitlist_emails';
 
 // Helper for checking KV connection
 const isKvConfigured = () => {
-  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+  const isConfigured = !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+  console.log('[API] Checking KV Config:', { 
+    hasUrl: !!process.env.KV_REST_API_URL, 
+    hasToken: !!process.env.KV_REST_API_TOKEN,
+    isConfigured 
+  });
+  return isConfigured;
 };
 
 // GET handler to return the count
@@ -21,6 +26,7 @@ export async function GET() {
   }
 
   try {
+    console.log('[API] Connecting to Redis to fetch scard...');
     const count = await kv.scard(WAITLIST_KEY);
     console.log('[API] Count fetched successfully:', count);
     return NextResponse.json({ count });
@@ -36,7 +42,10 @@ export async function POST(request: Request) {
   console.log('[API] POST /api/waitlist - New submission');
   
   try {
-    const { email } = await request.json();
+    const body = await request.json();
+    console.log('[API] Request body:', body);
+    
+    const { email } = body;
     console.log('[API] Received email:', email);
 
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
@@ -47,9 +56,6 @@ export async function POST(request: Request) {
     // Check if KV is configured
     if (!isKvConfigured()) {
       console.error('[API] KV environment variables missing');
-      // For local dev without KV, we can mock success or return error
-      // Let's return error to prompt configuration, or mock if you prefer
-      // For now, let's log error and return 500
       return NextResponse.json({ success: false, error: 'Database configuration missing' }, { status: 500 });
     }
 
@@ -59,6 +65,7 @@ export async function POST(request: Request) {
     
     // Get total count (for rank)
     let count = await kv.scard(WAITLIST_KEY);
+    console.log('[API] Current count before add:', count);
 
     if (isMember) {
       console.log('[API] Email already exists. Returning current rank.');
@@ -79,53 +86,8 @@ export async function POST(request: Request) {
     const rank = count;
     console.log('[API] Email added. New count:', count);
 
-    // Send emails using Nodemailer
-    if (process.env.GMAIL_EMAIL && process.env.GMAIL_PASSWORD) {
-      console.log('[API] Attempting to send emails...');
-      try {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: process.env.GMAIL_EMAIL,
-            pass: process.env.GMAIL_PASSWORD,
-          },
-        });
-
-        // 1. Send confirmation to user
-        await transporter.sendMail({
-          from: process.env.GMAIL_EMAIL,
-          to: email,
-          subject: 'Welcome to the PulseDeck Waitlist! 🚀',
-          text: `Thanks for joining the PulseDeck Presenter waitlist!\n\nYou are #${rank} in line.\n\nWe'll let you know as soon as we launch.\n\n- The PulseDeck Team`,
-          html: `
-            <div style="font-family: sans-serif; color: #333;">
-              <h1>Welcome to PulseDeck! 🚀</h1>
-              <p>Thanks for joining the PulseDeck Presenter waitlist.</p>
-              <p>You are <strong>#${rank}</strong> in line.</p>
-              <p>We're building the fastest way to turn briefs into on-brand decks, and we can't wait for you to try it.</p>
-              <br/>
-              <p>Best,</p>
-              <p>The PulseDeck Team</p>
-            </div>
-          `,
-        });
-
-        // 2. Send notification to admin (yourself)
-        await transporter.sendMail({
-          from: process.env.GMAIL_EMAIL,
-          to: process.env.GMAIL_EMAIL, // Send to self
-          subject: `New Waitlist Signup: ${email}`,
-          text: `New user joined the waitlist:\n\nEmail: ${email}\nRank: #${rank}\nTotal Count: ${count}`,
-        });
-
-        console.log(`[API] Emails sent successfully for ${email}`);
-      } catch (emailError) {
-        console.error('[API] Failed to send email:', emailError);
-        // Don't fail the request if email sending fails
-      }
-    } else {
-      console.warn('[API] GMAIL_EMAIL or GMAIL_PASSWORD not set. Skipping email send.');
-    }
+    // REMOVED EMAIL SENDING LOGIC FOR DEBUGGING
+    console.log('[API] Email sending skipped for debugging.');
 
     return NextResponse.json({ 
       success: true,
