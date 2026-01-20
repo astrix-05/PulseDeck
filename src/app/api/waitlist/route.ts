@@ -52,7 +52,6 @@ export async function POST(request: Request) {
           message: 'Waitlist temporarily unavailable but email noted' 
         }); 
       } 
-      throw importError; 
     } 
     
     if (!kv) { 
